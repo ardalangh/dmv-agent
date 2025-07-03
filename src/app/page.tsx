@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, ChangeEvent } from 'react';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  fileUrl?: string;
+  fileName?: string;
 }
 
 export default function Home() {
@@ -12,6 +14,7 @@ export default function Home() {
     { role: 'assistant' as const, content: 'Hello! I am your DMV Agent. How can I help you today?' },
   ]);
   const [input, setInput] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -20,18 +23,40 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    } else {
+      setFile(null);
+    }
+  };
+
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() && !file) return;
     setError('');
-    const newMessages: ChatMessage[] = [...messages, { role: 'user', content: input }];
+    let fileUrl: string | undefined;
+    let fileName: string | undefined;
+    if (file) {
+      fileUrl = URL.createObjectURL(file);
+      fileName = file.name;
+    }
+    const newMessages: ChatMessage[] = [
+      ...messages,
+      { role: 'user', content: input, fileUrl, fileName },
+    ];
     setMessages(newMessages);
     setInput('');
+    setFile(null);
     setIsLoading(true);
     try {
+      const formData = new FormData();
+      formData.append('messages', JSON.stringify(newMessages));
+      if (file) {
+        formData.append('file', file);
+      }
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages }),
+        body: formData,
       });
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
@@ -65,6 +90,16 @@ export default function Home() {
                   ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
               >
                 {msg.content}
+                {msg.fileName && (
+                  <div className="mt-2">
+                    <span className="block text-xs font-semibold">📄 {msg.fileName}</span>
+                    {msg.fileUrl && (
+                      <object data={msg.fileUrl} type="application/pdf" width="100%" height="120" className="mt-1 rounded border" aria-label={msg.fileName}>
+                        <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer">View PDF</a>
+                      </object>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -87,10 +122,17 @@ export default function Home() {
             disabled={isLoading}
             autoFocus
           />
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={handleFileChange}
+            disabled={isLoading}
+            className="text-xs"
+          />
           <button
             type="submit"
             className="bg-blue-600 text-white rounded px-4 py-2 font-semibold hover:bg-blue-700 disabled:opacity-50"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || (!input.trim() && !file)}
           >
             {isLoading ? '...' : 'Send'}
           </button>
