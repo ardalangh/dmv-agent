@@ -11,7 +11,7 @@ interface ChatMessage {
 
 export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant' as const, content: 'Hello! I am your DMV Agent. How can I help you today?' },
+    { role: 'assistant', content: 'Hello! I am your DMV Agent. How can I help you today?' },
   ]);
   const [input, setInput] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -72,18 +72,25 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
-      <h1 className="text-3xl font-bold mb-6 text-blue-700">DMV Agent Chat</h1>
-      <div className="w-full max-w-md bg-white shadow-md rounded-lg flex flex-col h-[70vh]">
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-100 font-sans">
+      <div className="w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl rounded-3xl bg-white/80 backdrop-blur-md border border-blue-100">
+        {/* Header */}
+        <div className="rounded-t-3xl bg-gradient-to-r from-blue-600 via-blue-500 to-purple-500 p-6 text-center">
+          <h1 className="text-4xl font-extrabold text-white tracking-tight drop-shadow-lg">DMV Agent Chat</h1>
+        </div>
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
           {messages.map((msg, idx) => (
             <div
               key={idx}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`rounded-lg px-4 py-2 max-w-[80%] whitespace-pre-line text-sm
-                  ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
+                className={`relative px-5 py-3 max-w-[75%] text-base rounded-2xl shadow transition-all
+                  ${msg.role === 'user'
+                    ? 'bg-gradient-to-br from-blue-500 to-purple-400 text-white rounded-br-md animate-fadeInRight'
+                    : 'bg-gray-100 text-gray-900 rounded-bl-md animate-fadeInLeft'}
+                `}
               >
                 {msg.content}
                 {msg.fileName && (
@@ -101,15 +108,16 @@ export default function Home() {
           ))}
           <div ref={chatEndRef} />
         </div>
+        {/* Input Area */}
         <form
-          className="flex items-center border-t p-2 gap-2"
+          className="flex items-center gap-3 border-t border-blue-100 bg-white/70 p-4 rounded-b-3xl"
           onSubmit={e => {
             e.preventDefault();
             if (!isLoading) sendMessage();
           }}
         >
           <input
-            className="flex-1 border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="flex-1 border border-blue-400 rounded-full px-4 py-3 text-base bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
             type="text"
             placeholder="Type your message..."
             value={input}
@@ -118,23 +126,49 @@ export default function Home() {
             disabled={isLoading}
             autoFocus
           />
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={handleFileChange}
-            disabled={isLoading}
-            className="text-xs"
-          />
+          {/* Custom File Input */}
+          <label
+            htmlFor="file-upload"
+            className="cursor-pointer bg-blue-100 text-blue-700 font-semibold px-4 py-2 rounded-full hover:bg-blue-200 transition shadow-sm"
+          >
+            Choose File
+            <input
+              id="file-upload"
+              type="file"
+              accept="application/pdf"
+              onChange={handleFileChange}
+              disabled={isLoading}
+              className="hidden"
+            />
+          </label>
+          <span className="ml-2 text-gray-400 text-sm min-w-[100px] truncate">
+            {file ? file.name : "No file chosen"}
+          </span>
           <button
             type="submit"
-            className="bg-blue-600 text-white rounded px-4 py-2 font-semibold hover:bg-blue-700 disabled:opacity-50"
+            className="bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full px-6 py-3 font-bold shadow hover:from-blue-600 hover:to-purple-600 transition disabled:opacity-50"
             disabled={isLoading || (!input.trim() && !file)}
           >
             {isLoading ? '...' : 'Send'}
           </button>
         </form>
-        {error && <div className="text-red-600 text-sm p-2">{error}</div>}
+        {error && <div className="text-red-600 text-sm p-2 text-center">{error}</div>}
       </div>
+      {/* Custom Animations */}
+      <style jsx global>{`
+        @keyframes fadeInRight {
+          from { opacity: 0; transform: translateX(40px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes fadeInLeft {
+          from { opacity: 0; transform: translateX(-40px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        .animate-fadeInRight { animation: fadeInRight 0.4s; }
+        .animate-fadeInLeft { animation: fadeInLeft 0.4s; }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e0e7ff; border-radius: 8px; }
+      `}</style>
     </div>
   );
 }
