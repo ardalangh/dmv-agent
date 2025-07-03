@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { promises as fs } from 'fs';
 
-const OPENAI_API_KEY = 'sk-REPLACE_WITH_YOUR_KEY'; // <-- Replace with your OpenAI API key
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+
+if (!OPENAI_API_KEY) {
+  throw new Error('OPENAI_API_KEY environment variable is not set.');
+}
 
 // Helper to load JSON data
 async function loadJson(filePath: string) {
