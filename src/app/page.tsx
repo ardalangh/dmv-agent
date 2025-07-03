@@ -7,6 +7,8 @@ interface ChatMessage {
   content: string;
   fileUrl?: string;
   fileName?: string;
+  docStatus?: 'correct' | 'incorrect';
+  docGuess?: string;
 }
 
 export default function Home() {
@@ -17,6 +19,8 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expectedType, setExpectedType] = useState('');
+  const [showTypePrompt, setShowTypePrompt] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -26,9 +30,16 @@ export default function Home() {
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
+      setShowTypePrompt(true);
     } else {
       setFile(null);
     }
+  };
+
+  const handleTypePromptSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setShowTypePrompt(false);
+    sendMessage();
   };
 
   const sendMessage = async () => {
@@ -49,14 +60,52 @@ export default function Home() {
     setFile(null);
     setIsLoading(true);
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages }),
-      });
-      if (!res.ok) throw new Error('Server error');
-      const data = await res.json();
-      setMessages([...newMessages, { role: 'assistant', content: data.reply }]);
+      if (file) {
+        // Send file to /api/verify-doc
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('expectedType', expectedType || '');
+        const res = await fetch('/api/verify-doc', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!res.ok) throw new Error('Server error');
+        const data = await res.json();
+        // Parse LLM result
+        const reply = data.result as string;
+        let docStatus: 'correct' | 'incorrect' = 'incorrect';
+        let docGuess = '';
+        if (/\bYES\b/i.test(reply)) {
+          docStatus = 'correct';
+        } else {
+          // Try to extract guessed type from reply
+          const match = reply.match(/document type is:?\s*([\w\s]+)/i);
+          if (match) docGuess = match[1].trim();
+        }
+        setMessages([
+          ...newMessages,
+          {
+            role: 'assistant',
+            content:
+              docStatus === 'correct'
+                ? '✅ Your document matches the expected type!'
+                : `⚠️ The document you submitted appears to be: ${docGuess || 'something else'}. Please upload the required document: ${expectedType}.`,
+            docStatus,
+            docGuess,
+          },
+        ]);
+        setExpectedType('');
+      } else {
+        // Normal chat
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: newMessages }),
+        });
+        if (!res.ok) throw new Error('Server error');
+        const data = await res.json();
+        setMessages([...newMessages, { role: 'assistant', content: data.reply }]);
+      }
     } catch (err) {
       setError('Failed to get response.');
     } finally {
@@ -93,6 +142,12 @@ export default function Home() {
                 `}
               >
                 {msg.content}
+                {msg.docStatus === 'correct' && (
+                  <span className="ml-2 text-green-600 text-xl align-middle">✔️</span>
+                )}
+                {msg.docStatus === 'incorrect' && (
+                  <span className="ml-2 text-yellow-600 text-xl align-middle">⚠️</span>
+                )}
                 {msg.fileName && (
                   <div className="mt-2">
                     <span className="block text-xs font-semibold">📄 {msg.fileName}</span>
@@ -113,7 +168,13 @@ export default function Home() {
           className="flex items-center gap-3 border-t border-blue-100 bg-white/70 p-4 rounded-b-3xl"
           onSubmit={e => {
             e.preventDefault();
-            if (!isLoading) sendMessage();
+            if (!isLoading) {
+              if (file && !expectedType) {
+                setShowTypePrompt(true);
+              } else {
+                sendMessage();
+              }
+            }
           }}
         >
           <input
@@ -135,7 +196,7 @@ export default function Home() {
             <input
               id="file-upload"
               type="file"
-              accept="application/pdf"
+              accept="application/pdf,image/png,image/jpeg"
               onChange={handleFileChange}
               disabled={isLoading}
               className="hidden"
@@ -152,6 +213,31 @@ export default function Home() {
             {isLoading ? '...' : 'Send'}
           </button>
         </form>
+        {showTypePrompt && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+            <form
+              className="bg-white rounded-2xl shadow-lg p-8 flex flex-col gap-4 min-w-[320px]"
+              onSubmit={handleTypePromptSubmit}
+            >
+              <label className="font-semibold text-lg text-gray-700">What is the expected document type?</label>
+              <input
+                className="border border-blue-400 rounded-full px-4 py-2 text-base bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                type="text"
+                placeholder="e.g. Proof of Address, Passport, etc."
+                value={expectedType}
+                onChange={e => setExpectedType(e.target.value)}
+                required
+                autoFocus
+              />
+              <button
+                type="submit"
+                className="bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full px-6 py-2 font-bold shadow hover:from-blue-600 hover:to-purple-600 transition"
+              >
+                Continue
+              </button>
+            </form>
+          </div>
+        )}
         {error && <div className="text-red-600 text-sm p-2 text-center">{error}</div>}
       </div>
       {/* Custom Animations */}
