@@ -1,0 +1,41 @@
+{
+  "CA": {
+    "Apply for a new standard driver license": [
+      "Proof of identity",
+      "Proof of Social Security Number",
+      "Proof of California residency",
+      "Completed application form (DL 44)"
+    ],
+    "Renew driver license or CDL": [
+      "Current driver license",
+      "Renewal notice (if available)",
+      "Proof of address (if changed)"
+    ]
+  },
+  "NY": {
+    "Apply for a new standard driver license": [
+      "Proof of identity",
+      "Proof of date of birth",
+      "Proof of Social Security Number",
+      "Proof of New York residency"
+    ],
+    "Renew driver license or CDL": [
+      "Current driver license",
+      "Renewal notice (if available)",
+      "Proof of address (if changed)"
+    ]
+  },
+  "TX": {
+    "Apply for a new standard driver license": [
+      "Proof of identity",
+      "Proof of Social Security Number",
+      "Proof of Texas residency",
+      "Proof of U.S. Citizenship or lawful presence"
+    ],
+    "Renew driver license or CDL": [
+      "Current driver license",
+      "Renewal notice (if available)",
+      "Proof of address (if changed)"
+    ]
+  }
+} 

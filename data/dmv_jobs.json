@@ -1,0 +1,100 @@
+{
+  "A": {
+    "category": "Original Driver License, CDL (Commercial Driver's License)",
+    "services": [
+      "Apply for a new standard driver license",
+      "Apply for a new commercial driver license (CDL)",
+      "Obtain a learner's permit",
+      "Upgrade from permit to full license",
+      "Add endorsements (e.g., motorcycle, school bus)",
+      "Apply for a provisional or graduated license",
+      "Obtain a REAL ID-compliant license",
+      "Out-of-state license transfer"
+    ]
+  },
+  "B": {
+    "category": "License Renewals, Reissues, and Duplicates",
+    "services": [
+      "Renew driver license or CDL",
+      "Replace lost or stolen license",
+      "Update license information (address, name change)",
+      "Reissue expired or suspended license",
+      "Renew or replace state ID card"
+    ]
+  },
+  "C": {
+    "category": "Compliance Transactions",
+    "services": [
+      "Reinstate suspended or revoked license",
+      "Pay reinstatement or compliance fees",
+      "Submit proof of insurance (SR-22)",
+      "Resolve court-ordered requirements",
+      "Administrative hearing requests",
+      "Clear outstanding tickets or citations"
+    ]
+  },
+  "D": {
+    "category": "Combined Transactions",
+    "services": [
+      "Simultaneous license and registration services",
+      "License and title application together",
+      "Multiple service requests in one visit"
+    ]
+  },
+  "E": {
+    "category": "Express Transactions",
+    "services": [
+      "Quick vehicle registration renewal",
+      "Quick driver license renewal",
+      "Obtain handicap placards",
+      "Request driving records or transcripts",
+      "Replace registration card or sticker"
+    ]
+  },
+  "F": {
+    "category": "Titles",
+    "services": [
+      "Apply for a new vehicle title",
+      "Transfer vehicle title (buying/selling a car)",
+      "Title for out-of-state vehicles",
+      "Title for inherited vehicles",
+      "Title for rebuilt or salvage vehicles"
+    ]
+  },
+  "G": {
+    "category": "Replacement Titles",
+    "services": [
+      "Request duplicate or replacement vehicle title",
+      "Correct errors on existing title"
+    ]
+  },
+  "R": {
+    "category": "Registrations",
+    "services": [
+      "Register a new or used vehicle",
+      "Renew vehicle registration",
+      "Replace lost or stolen registration",
+      "Register motorcycles, trailers, or boats",
+      "Temporary permits",
+      "Update registration information"
+    ]
+  },
+  "T": {
+    "category": "Tests (written or road)",
+    "services": [
+      "Schedule and take written knowledge test",
+      "Schedule and take road skills test",
+      "CDL knowledge and skills tests",
+      "Vision screening",
+      "Retesting for reinstatement"
+    ]
+  },
+  "V": {
+    "category": "Vital Records",
+    "services": [
+      "Request birth certificates",
+      "Request marriage certificates",
+      "Request death certificates"
+    ]
+  }
+} 
