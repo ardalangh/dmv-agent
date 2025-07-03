@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { promises as fs } from 'fs';
+import { Agent, run, tool } from '@openai/agents';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+console.log(OPENAI_API_KEY);
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
 if (!OPENAI_API_KEY) {
@@ -45,6 +47,32 @@ async function checkDMVTicket(state: string, service: string, providedDocs: stri
     ticketType,
   };
 }
+
+// Register DMV checker as a tool
+const checkDMVTicketTool = tool({
+  name: 'checkDMVTicket',
+  description: 'Checks DMV ticket requirements and status based on state, service, and provided documents.',
+  parameters: {
+    type: 'object',
+    properties: {
+      state: { type: 'string', description: 'The state abbreviation (e.g., CA, NY, TX)' },
+      service: { type: 'string', description: 'The DMV service requested' },
+      providedDocs: { type: 'array', items: { type: 'string' }, description: 'List of provided documents' },
+    },
+    required: ['state', 'service', 'providedDocs'],
+    additionalProperties: false,
+  },
+  execute: async (input: any) => {
+    const { state, service, providedDocs } = input;
+    return await checkDMVTicket(state, service, providedDocs);
+  },
+});
+
+const agent = new Agent({
+  name: 'DMV Agent',
+  instructions: `You are a helpful DMV agent. Gather the user's state, the DMV service they want, and the documents they have. When you have all three, call the checkDMVTicket tool. Reply with the ticket result, including missing documents if any.`,
+  tools: [checkDMVTicketTool],
+});
 
 // Simple info extraction from chat (for demo; can be improved with LLM function calling)
 function extractInfo(messages: { role: string; content: string }[]) {
@@ -89,56 +117,20 @@ function extractInfo(messages: { role: string; content: string }[]) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages } = await req.json(); // messages: [{role: 'user'|'assistant', content: string}]
+    const rawBody = await req.text();
+    console.log('Raw request body:', rawBody);
+    const { messages } = JSON.parse(rawBody);
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    // Add system prompt
-    const systemPrompt = {
-      role: 'system',
-      content: `You are a helpful DMV agent. Gather the user's state, the DMV service they want, and the documents they have. When you have all three, ask the user to type their documents as a comma-separated list after 'Documents:'. Then, reply with 'Checking your documents...' and stop.`,
-    };
-    const chatWithSystem = [systemPrompt, ...messages];
+    // Convert messages to a single prompt string (or adapt as needed)
+    const userPrompt = messages.map(m => m.content).join('\n');
 
-    // Try to extract info
-    const { state, service, providedDocs } = extractInfo(messages);
-    let dmvResult = null;
-    if (state && service && providedDocs.length > 0) {
-      dmvResult = await checkDMVTicket(state, service, providedDocs);
-    }
+    const result = await run(agent, userPrompt);
 
-    // If we have all info, reply with ticket result
-    if (dmvResult) {
-      let ticketMsg = `Here is your DMV ticket:\n\nCategory: ${dmvResult.category}\nTicket Type: ${dmvResult.ticketType}\nStatus: ${dmvResult.status}`;
-      if (dmvResult.missingDocs.length > 0) {
-        ticketMsg += `\nMissing Documents: ${dmvResult.missingDocs.join(', ')}`;
-      }
-      return NextResponse.json({ reply: ticketMsg });
-    }
-
-    // Otherwise, continue the chat with OpenAI
-    const openaiRes = await fetch(OPENAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        messages: chatWithSystem,
-        temperature: 0.2,
-        max_tokens: 512,
-      }),
-    });
-
-    if (!openaiRes.ok) {
-      return NextResponse.json({ error: 'OpenAI API error' }, { status: 500 });
-    }
-    const data = await openaiRes.json();
-    const reply = data.choices?.[0]?.message?.content || '';
-    return NextResponse.json({ reply });
+    return NextResponse.json({ reply: result.finalOutput });
   } catch (error) {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return NextResponse.json({ error: (error as Error).message || 'Server error' }, { status: 500 });
   }
 } 

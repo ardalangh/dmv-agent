@@ -49,14 +49,10 @@ export default function Home() {
     setFile(null);
     setIsLoading(true);
     try {
-      const formData = new FormData();
-      formData.append('messages', JSON.stringify(newMessages));
-      if (file) {
-        formData.append('file', file);
-      }
       const res = await fetch('/api/chat', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages }),
       });
       if (!res.ok) throw new Error('Server error');
       const data = await res.json();
