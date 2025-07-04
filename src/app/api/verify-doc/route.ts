@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
-import pdfParse from 'pdf-parse';
+import { DOMMatrix } from 'canvas';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -11,12 +12,29 @@ if (!OPENAI_API_KEY) {
   throw new Error('OPENAI_API_KEY environment variable is not set.');
 }
 
-// Helper to extract text from PDF using pdf-parse
+if (typeof global.DOMMatrix === 'undefined') {
+  // @ts-ignore
+  global.DOMMatrix = DOMMatrix;
+}
+
+// Helper to extract text from PDF using pdfjs-dist
 async function extractTextFromPDF(file: File): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const data = await pdfParse(buffer);
-  return data.text;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const loadingTask = getDocument({ data: buffer });
+    const pdf = await loadingTask.promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((item: any) => item.str).join(' ') + '\n';
+    }
+    return text;
+  } catch (err) {
+    console.error('Error extracting text from PDF:', err);
+    throw err;
+  }
 }
 
 // Helper to convert image file to base64
@@ -32,6 +50,7 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File | null;
     const expectedType = formData.get('expectedType') as string | null;
     if (!file || !expectedType) {
+      console.error('Missing file or expectedType', { file, expectedType });
       return NextResponse.json({ error: 'Missing file or expectedType' }, { status: 400 });
     }
 
@@ -40,20 +59,59 @@ export async function POST(req: NextRequest) {
     let fileName = file.name || '';
     let pdfText = '';
     let base64Image = '';
+    let openaiRequestBody;
+    let openaiModel = 'gpt-3.5-turbo';
+
+    console.log('Received file:', { fileType, fileName });
 
     if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
       // PDF: extract text
-      pdfText = await extractTextFromPDF(file);
-      prompt = `You are a DMV document verification agent. The user has uploaded a PDF. The expected document type is: "${expectedType}". Here is the extracted text from the PDF:\n\n${pdfText}\n\nDoes this document match the expected type? Reply with YES or NO and a short reasoning.`;
+      try {
+        pdfText = await extractTextFromPDF(file);
+        prompt = `You are a DMV document verification agent. The user has uploaded a PDF. The expected document type is: "${expectedType}". Here is the extracted text from the PDF:\n\n${pdfText}\n\nDoes this document match the expected type? Reply with YES or NO and a short reasoning.`;
+        openaiRequestBody = {
+          model: openaiModel,
+          messages: [
+            { role: 'system', content: 'You are a DMV document verification agent.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.2,
+          max_tokens: 256,
+        };
+      } catch (err) {
+        console.error('Failed to extract text from PDF:', err);
+        return NextResponse.json({ error: 'Failed to extract text from PDF' }, { status: 500 });
+      }
     } else if (
       fileType === 'image/png' || fileType === 'image/jpeg' || fileName.endsWith('.png') || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')
     ) {
-      // Image: convert to base64
-      base64Image = await imageFileToBase64(file);
-      prompt = `You are a DMV document verification agent. The user has uploaded an image file (base64-encoded below). The expected document type is: "${expectedType}". Here is the base64 string of the image:\n\n${base64Image}\n\nWhat type of document is this? Does it match the expected type? Reply with YES or NO and a short reasoning.`;
+      // Image: convert to base64 and use vision model
+      try {
+        base64Image = await imageFileToBase64(file);
+        openaiModel = 'gpt-4o';
+        openaiRequestBody = {
+          model: openaiModel,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: `The expected document type is: "${expectedType}". What type of document is this? Does it match the expected type? Reply with YES or NO and a short reasoning.` },
+                { type: 'image_url', image_url: { url: `data:${fileType};base64,${base64Image}` } },
+              ],
+            },
+          ],
+          max_tokens: 256,
+        };
+      } catch (err) {
+        console.error('Failed to convert image to base64:', err);
+        return NextResponse.json({ error: 'Failed to process image file' }, { status: 500 });
+      }
     } else {
+      console.error('Unsupported file type', { fileType, fileName });
       return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
     }
+
+    console.log('OpenAI request body:', JSON.stringify(openaiRequestBody));
 
     const openaiRes = await fetch(OPENAI_API_URL, {
       method: 'POST',
@@ -61,17 +119,10 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          { role: 'system', content: 'You are a DMV document verification agent.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 256,
-      }),
+      body: JSON.stringify(openaiRequestBody),
     });
     if (!openaiRes.ok) {
+      console.error('OpenAI API error', { status: openaiRes.status, statusText: openaiRes.statusText });
       return NextResponse.json({ error: 'OpenAI API error' }, { status: 500 });
     }
     const data = await openaiRes.json();
