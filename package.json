@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@openai/agents": "^0.0.10",
+    "@supabase/supabase-js": "^2.50.3",
+    "@vercel/kv": "^3.0.0",
     "canvas": "^3.1.2",
     "next": "15.3.4",
     "pdf-parse": "^1.1.1",
@@ -19,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.53.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

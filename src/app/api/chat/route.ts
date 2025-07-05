@@ -2,10 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { Agent, run, tool } from '@openai/agents';
+import { kv } from '@vercel/kv';
+import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-console.log(OPENAI_API_KEY);
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 if (!OPENAI_API_KEY) {
   throw new Error('OPENAI_API_KEY environment variable is not set.');
@@ -63,15 +69,55 @@ const checkDMVTicketTool = tool({
     additionalProperties: false,
   },
   execute: async (input: any) => {
+    console.log('Calling tool: checkDMVTicket');
+    console.log('[Tool Call] checkDMVTicket', input);
     const { state, service, providedDocs } = input;
     return await checkDMVTicket(state, service, providedDocs);
   },
 });
 
+// Tool to store or update user intent in Supabase
+async function storeUserIntentExecute(input: { sessionId: string; intent: string }) {
+  console.log('Calling tool: storeUserIntent');
+  console.log('[Tool Call] storeUserIntent', input);
+  const { intent } = input;
+  // Insert into chat_sessions table, let Supabase auto-increment the id
+  const { error } = await supabase
+    .from('chat_sessions')
+    .insert([
+      {
+        user_intent: intent,
+        // user_verrified_docs: ... (add if you have verification data)
+      }
+    ]);
+  if (error) {
+    console.error('Supabase insert error:', error);
+    throw new Error(error.message);
+  }
+  return { success: true };
+}
+
+// Only register the tool for the agent, not for direct use
+const storeUserIntentTool = tool({
+  name: 'storeUserIntent',
+  description: 'Stores or updates the user\'s DMV intent (what they want to do) per chat session in Supabase.',
+  parameters: {
+    type: 'object',
+    properties: {
+      sessionId: { type: 'string', description: 'Unique session identifier for the chat session.' },
+      intent: { type: 'string', description: 'The user\'s intent or what they want to do at the DMV.' },
+    },
+    required: ['sessionId', 'intent'],
+    additionalProperties: false,
+  },
+  execute: storeUserIntentExecute,
+  strict: false,
+});
+
 const agent = new Agent({
   name: 'DMV Agent',
-  instructions: `You are a helpful DMV agent. Gather the user's state, the DMV service they want, and the documents they have. When you have all three, call the checkDMVTicket tool. Reply with the ticket result, including missing documents if any.`,
-  tools: [checkDMVTicketTool],
+  instructions: `You are a helpful DMV agent. Gather the user's state, the DMV service they want (including REAL ID or REAL ID-compliant license), and the documents they have. When you have all three, call the checkDMVTicket tool. Reply with the ticket result, including missing documents if any. Use the storeUserIntent tool to save or update the user's intent per chat session in Supabase. If the user expresses an intent to get a REAL ID or REAL ID-compliant license, treat it as a DMV service and call storeUserIntent immediately with their intent and session ID, even if other details are missing.`,
+  tools: [checkDMVTicketTool, storeUserIntentTool],
 });
 
 // Simple info extraction from chat (for demo; can be improved with LLM function calling)
@@ -91,16 +137,21 @@ function extractInfo(messages: { role: string; content: string }[]) {
         }
       }
       if (!service) {
-        // match a known service
+        // match a known service, including REAL ID
         const services = [
           'Apply for a new standard driver license',
           'Renew driver license or CDL',
+          'Obtain a REAL ID-compliant license',
         ];
         for (const s of services) {
           if (msg.content.toLowerCase().includes(s.toLowerCase())) {
             service = s;
             break;
           }
+        }
+        // map common user phrasing for real id
+        if (!service && /real id/.test(msg.content.toLowerCase())) {
+          service = 'Obtain a REAL ID-compliant license';
         }
       }
       // crude doc extraction
@@ -115,10 +166,20 @@ function extractInfo(messages: { role: string; content: string }[]) {
   return { state, service, providedDocs };
 }
 
+// Helper to load all DMV services
+let allDMVServices: string[] = [];
+async function loadAllDMVServices() {
+  if (allDMVServices.length > 0) return allDMVServices;
+  const jobsPath = path.join(process.cwd(), 'data', 'dmv_jobs.json');
+  const jobsData = await loadJson(jobsPath);
+  allDMVServices = Object.values(jobsData).flatMap((info: any) => info.services);
+  return allDMVServices;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
-    console.log('Raw request body:', rawBody);
+    
     const { messages } = JSON.parse(rawBody);
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
@@ -128,6 +189,19 @@ export async function POST(req: NextRequest) {
     const userPrompt = messages.map(m => m.content).join('\n');
 
     const result = await run(agent, userPrompt);
+
+    // General fallback: if user message matches any DMV service, store intent
+    const userMessage = messages.find(m => m.role === 'user')?.content || '';
+    const dmvServices = await loadAllDMVServices();
+    const matchedService = dmvServices.find(service =>
+      userMessage.toLowerCase().includes(service.toLowerCase())
+    );
+    if (matchedService) {
+      // Generate a simple sessionId as a hash of the user message for demo; in production, use a real session identifier
+      const sessionId = crypto.createHash('sha256').update(userMessage).digest('hex').slice(0, 16);
+      const intent = userMessage;
+      await storeUserIntentExecute({ sessionId, intent });
+    }
 
     return NextResponse.json({ reply: result.finalOutput });
   } catch (error) {
