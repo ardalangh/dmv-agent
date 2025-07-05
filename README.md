@@ -15,6 +15,8 @@ Somewhere between hour seven and my third existential crisis, I thought: "There 
 - Available 24/7, even on weekends and holidays (try getting that at the DMV)
 - Actually wants to help you (because, well, that's literally all it does)
 
+![A totally normal day at the DMV](assets/dmv-image.jpeg)
+
 
 ## Getting Started
 
