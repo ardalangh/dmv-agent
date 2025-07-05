@@ -1,10 +1,8 @@
+import { Agent, run, tool } from '@openai/agents';
+import { createClient } from '@supabase/supabase-js';
+import { promises as fs } from 'fs';
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
-import { promises as fs } from 'fs';
-import { Agent, run, tool } from '@openai/agents';
-import { kv } from '@vercel/kv';
-import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -80,19 +78,19 @@ const checkDMVTicketTool = tool({
 async function storeUserIntentExecute(input: { sessionId: string; intent: string }) {
   console.log('Calling tool: storeUserIntent');
   console.log('[Tool Call] storeUserIntent', input);
-  const { intent } = input;
-  // Insert into chat_sessions table, let Supabase auto-increment the id
-  const { error } = await supabase
+  const { sessionId, intent } = input;
+  // Update the user_intent for the given sessionId
+  const { error, data } = await supabase
     .from('chat_sessions')
-    .insert([
-      {
-        user_intent: intent,
-        // user_verrified_docs: ... (add if you have verification data)
-      }
-    ]);
+    .update({ user_intent: intent })
+    .eq('id', sessionId)
+    .select('id');
   if (error) {
-    console.error('Supabase insert error:', error);
+    console.error('Supabase update error:', error);
     throw new Error(error.message);
+  }
+  if (!data || data.length === 0) {
+    throw new Error('No chat session found with the provided sessionId.');
   }
   return { success: true };
 }
@@ -197,13 +195,32 @@ export async function POST(req: NextRequest) {
       userMessage.toLowerCase().includes(service.toLowerCase())
     );
     if (matchedService) {
-      // Generate a simple sessionId as a hash of the user message for demo; in production, use a real session identifier
-      const sessionId = crypto.createHash('sha256').update(userMessage).digest('hex').slice(0, 16);
+      
+      
       const intent = userMessage;
       await storeUserIntentExecute({ sessionId, intent });
     }
 
     return NextResponse.json({ reply: result.finalOutput });
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message || 'Server error' }, { status: 500 });
+  }
+}
+
+// New endpoint: /api/chat/start
+export async function startChatSession(req: NextRequest) {
+  try {
+    const { intent } = await req.json();
+    // Create a new session with the provided intent (or empty string if not provided)
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .insert([{ user_intent: intent || '' }])
+      .select('id')
+      .single();
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ sessionId: data.id });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message || 'Server error' }, { status: 500 });
   }

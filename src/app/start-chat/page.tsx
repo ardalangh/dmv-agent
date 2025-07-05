@@ -1,11 +1,9 @@
-"use client"
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function StartChatPage() {
+  const [sessionId, setSessionId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
 
   const handleStartChat = async () => {
     setLoading(true);
@@ -14,13 +12,11 @@ export default function StartChatPage() {
       const res = await fetch('/api/chat/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intent: '' }),
+        body: JSON.stringify({ intent: '' }), // Optionally collect intent from user
       });
       if (!res.ok) throw new Error('Failed to start chat');
       const data = await res.json();
-      if (typeof data.sessionId === 'number') {
-        router.push(`/chat/${data.sessionId}`);
-      }
+      setSessionId(data.sessionId);
     } catch (err) {
       setError('Could not start chat.');
     } finally {
@@ -39,8 +35,13 @@ export default function StartChatPage() {
         >
           {loading ? 'Starting...' : 'Start Chat'}
         </button>
+        {sessionId && (
+          <div className="mt-4 text-green-700 font-semibold">
+            Chat started! Session ID: <span className="font-mono">{sessionId}</span>
+          </div>
+        )}
         {error && <div className="mt-4 text-red-600">{error}</div>}
       </div>
     </div>
   );
-}
+} 

@@ -4,9 +4,15 @@ import path from 'path';
 import { Readable } from 'stream';
 import { DOMMatrix } from 'canvas';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { createClient } from '@supabase/supabase-js';
+import { log } from 'console';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 if (!OPENAI_API_KEY) {
   throw new Error('OPENAI_API_KEY environment variable is not set.');
@@ -49,6 +55,8 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const expectedType = formData.get('expectedType') as string | null;
+    const sessionIdRaw = formData.get('session_id');
+    const sessionId = sessionIdRaw ? Number(sessionIdRaw) : null;
     if (!file || !expectedType) {
       console.error('Missing file or expectedType', { file, expectedType });
       return NextResponse.json({ error: 'Missing file or expectedType' }, { status: 400 });
@@ -111,7 +119,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
     }
 
-    console.log('OpenAI request body:', JSON.stringify(openaiRequestBody));
+
+
+  
 
     const openaiRes = await fetch(OPENAI_API_URL, {
       method: 'POST',
@@ -125,8 +135,51 @@ export async function POST(req: NextRequest) {
       console.error('OpenAI API error', { status: openaiRes.status, statusText: openaiRes.statusText });
       return NextResponse.json({ error: 'OpenAI API error' }, { status: 500 });
     }
+
+    
     const data = await openaiRes.json();
     const reply = data.choices?.[0]?.message?.content || '';
+
+    console.log('reply',sessionId);
+
+    // If verified, update user_verrified_docs in chat_sessions
+    if (/\bYES\b/i.test(reply) && sessionId) {
+      const docInfo = {
+        type: expectedType,
+        fileName,
+        verifiedAt: new Date().toISOString(),
+      };
+      // Fetch current verified docs
+      console.log('fetching verified docs');
+      console.log('sessionId', sessionId);  
+      const { data: current, error: fetchError } = await supabase
+        .from('chat_sessions')
+        .select('user_verrified_docs')
+        .eq('id', sessionId)
+        .single();
+      let updatedDocs = [];
+      console.log('current', current);
+      if (current?.user_verrified_docs) {
+        updatedDocs = Array.isArray(current.user_verrified_docs)
+          ? current.user_verrified_docs
+          : [];
+      }
+      console.log('updatedDocs', updatedDocs);
+      updatedDocs.push(docInfo);
+      // Update the row
+      console.log('updating verified docs');
+      const { error } = await supabase
+        .from('chat_sessions')
+        .update({ user_verrified_docs: updatedDocs })
+        .eq('id', sessionId);
+      console.log('error', error);
+      if (error) {
+        console.error('Failed to update verified docs:', error);
+      }
+    } else {
+      console.log('no verified docs');
+    }
+
     return NextResponse.json({ result: reply });
   } catch (error) {
     console.error('Verify-doc error:', error);
